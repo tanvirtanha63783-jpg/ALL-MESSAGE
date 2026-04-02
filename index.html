@@ -1,0 +1,254 @@
+    <!DOCTYPE html>
+<html lang="bn">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bangla AI Messenger</title>
+
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-auth.js"></script>
+<script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-firestore.js"></script>
+
+<style>
+body{
+  margin:0;
+  font-family:sans-serif;
+  background:#121212;
+  color:white;
+  transition:0.3s;
+}
+body.light{
+  background:#f0f0f0;
+  color:#121212;
+}
+
+#login, #chatPage{
+  width:100%;
+  height:100vh;
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  flex-direction:column;
+}
+
+#chatPage{
+  display:none;
+}
+
+#chatBox{
+  width:95%;
+  height:70vh;
+  overflow-y:auto;
+  border-radius:15px;
+  padding:10px;
+  background:#1f1f1f;
+}
+body.light #chatBox{
+  background:#ffffff;
+}
+
+.msg{
+  max-width:70%;
+  padding:10px;
+  margin:5px;
+  border-radius:15px;
+  word-wrap:break-word;
+  line-height:1.4;
+  animation:fadeIn 0.3s;
+}
+
+.user{
+  background:#2979ff;
+  margin-left:auto;
+  color:white;
+}
+.other{
+  background:#43a047;
+  margin-right:auto;
+  color:white;
+}
+
+#bottom{
+  width:95%;
+  display:flex;
+  margin-top:10px;
+}
+#text{
+  flex:1;
+  padding:10px;
+  border-radius:15px;
+  border:none;
+}
+button{
+  padding:10px 15px;
+  border:none;
+  border-radius:15px;
+  background:#22c55e;
+  color:white;
+  margin-left:5px;
+  cursor:pointer;
+}
+#toggleMode{
+  position:absolute;
+  top:10px;
+  right:10px;
+  background:#ffb300;
+  border-radius:10px;
+  padding:5px 10px;
+  cursor:pointer;
+}
+.typing{
+  font-size:12px;
+  color:#ccc;
+  margin-left:10px;
+  font-style:italic;
+}
+
+@keyframes fadeIn{
+  from{opacity:0;}
+  to{opacity:1;}
+}
+input{
+  padding:10px;
+  margin:5px;
+  border-radius:10px;
+  border:none;
+}
+</style>
+</head>
+
+<body>
+
+<div id="login">
+  <h2>🔥 Login / Register</h2>
+  <input id="email" placeholder="Email লিখুন">
+  <input id="password" type="password" placeholder="Password লিখুন">
+  <div>
+    <button onclick="login()">Login</button>
+    <button onclick="register()">Register</button>
+  </div>
+</div>
+
+<div id="chatPage">
+  <div style="width:100%;display:flex;justify-content:space-between;align-items:center;padding:10px;">
+    <h3 id="userName"></h3>
+    <div id="toggleMode" onclick="toggleMode()">🌗</div>
+  </div>
+
+  <div id="chatBox"></div>
+  <div class="typing" id="typing"></div>
+
+  <div id="bottom">
+    <input id="text" placeholder="লিখো...">
+    <button onclick="send()">Send</button>
+  </div>
+</div>
+
+<script>
+// Firebase config (নিজের project)
+const firebaseConfig = {
+  apiKey: "AIzaSyCWBFUnOjsOQjmRVByye1q_dhcXUB6WsF8",
+  authDomain: "admin-panel-e5d4e.firebaseapp.com",
+  projectId: "admin-panel-e5d4e"
+};
+firebase.initializeApp(firebaseConfig);
+let auth = firebase.auth();
+let db = firebase.firestore();
+
+let user = null;
+let typingRef = db.collection("typing");
+
+// LOGIN
+function login(){
+  let email = document.getElementById("email").value;
+  let password = document.getElementById("password").value;
+  if(!email || !password) return alert("সব ফিল্ড পূরণ করুন!");
+  auth.signInWithEmailAndPassword(email,password)
+      .catch(err=>alert(err.message));
+}
+
+// REGISTER
+function register(){
+  let email = document.getElementById("email").value;
+  let password = document.getElementById("password").value;
+  if(!email || !password) return alert("সব ফিল্ড পূরণ করুন!");
+  auth.createUserWithEmailAndPassword(email,password)
+      .catch(err=>alert(err.message));
+}
+
+// AUTH STATE CHANGE
+auth.onAuthStateChanged(u=>{
+  if(u){
+    user = u;
+    document.getElementById("login").style.display="none";
+    document.getElementById("chatPage").style.display="flex";
+    document.getElementById("userName").innerText = "👤 "+(u.email);
+    loadMessages();
+  } else {
+    user=null;
+    document.getElementById("login").style.display="flex";
+    document.getElementById("chatPage").style.display="none";
+  }
+});
+
+let chatBox = document.getElementById("chatBox");
+let typingBox = document.getElementById("typing");
+
+// SEND MESSAGE
+function send(){
+  let text = document.getElementById("text").value;
+  if(!text) return;
+  db.collection("messages").add({
+    text:text,
+    uid:user.uid,
+    name:user.email,
+    time:Date.now(),
+    seen:false
+  });
+  document.getElementById("text").value="";
+  typingRef.doc(user.uid).delete();
+}
+
+// LOAD MESSAGES
+function loadMessages(){
+  db.collection("messages").orderBy("time").onSnapshot(snapshot=>{
+    chatBox.innerHTML="";
+    snapshot.forEach(doc=>{
+      let m = doc.data();
+      let div = document.createElement("div");
+      div.className="msg "+(m.uid==user.uid?"user":"other");
+      div.innerText = m.name+": "+m.text;
+      chatBox.appendChild(div);
+
+      if(m.uid!=user.uid && !m.seen){
+        doc.ref.update({seen:true});
+      }
+    });
+    chatBox.scrollTop = chatBox.scrollHeight;
+  });
+
+  // Typing Indicator
+  typingRef.onSnapshot(snapshot=>{
+    let typingUsers=[];
+    snapshot.forEach(doc=>{
+      if(doc.id!=user.uid) typingUsers.push(doc.data().name);
+    });
+    typingBox.innerText = typingUsers.length>0?typingUsers.join(", ")+" typing...":"";
+  });
+}
+
+// TYPING DETECTION
+document.getElementById("text").addEventListener("input",()=>{
+  if(user) typingRef.doc(user.uid).set({name:user.email});
+  setTimeout(()=>{if(user) typingRef.doc(user.uid).delete()},2000);
+});
+
+// DARK/LIGHT MODE
+function toggleMode(){
+  document.body.classList.toggle("light");
+}
+</script>
+
+</body>
+</html>
